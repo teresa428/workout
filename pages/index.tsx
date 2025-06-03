@@ -1,11 +1,12 @@
-
+// Simple Strength Training Log App
 import { useState, useEffect } from "react";
 
 const LOCAL_STORAGE_KEY = "strength_training_log";
 
-export default function Home() {
+export default function StrengthLogApp() {
   const [log, setLog] = useState([]);
   const [note, setNote] = useState("");
+  const [suggestion, setSuggestion] = useState("Generating personalized suggestion...");
 
   useEffect(() => {
     const saved = JSON.parse(localStorage.getItem(LOCAL_STORAGE_KEY)) || [];
@@ -16,20 +17,47 @@ export default function Home() {
     localStorage.setItem(LOCAL_STORAGE_KEY, JSON.stringify(log));
   }, [log]);
 
+  useEffect(() => {
+    if (log.length > 0) {
+      generateChatGPTSuggestion();
+    } else {
+      setSuggestion("Start training and log your first session!");
+    }
+  }, [log]);
+
+  const extractDateFromNote = (text) => {
+    const match = text.match(/(\d{1,2})[\/\\\-](\d{1,2})/);
+    if (match) {
+      const now = new Date();
+      const year = now.getFullYear();
+      const month = match[1].padStart(2, '0');
+      const day = match[2].padStart(2, '0');
+      return `${year}-${month}-${day}`;
+    }
+    return new Date().toLocaleDateString();
+  };
+
   const handleAdd = () => {
     if (!note.trim()) return;
-    const newEntry = { date: new Date().toLocaleDateString(), note };
-    setLog([newEntry, ...log]);
+    const date = extractDateFromNote(note);
+    const newEntry = { date, note };
+    const newLog = [newEntry, ...log];
+    setLog(newLog);
     setNote("");
   };
 
-  const suggestNext = () => {
-    if (log.length === 0) return "Start training and log your first session!";
-    const last = log[0].note.toLowerCase();
-    if (last.includes("deadlift")) return "Try a push day next: Bench, Shoulder Press, Core";
-    if (last.includes("bench") || last.includes("臥推")) return "Go for legs: Squats, Lunges, Leg Press";
-    if (last.includes("lunge") || last.includes("腿")) return "Pull day: Deadlifts, Rows, Pull-downs";
-    return "Keep alternating muscle groups and progressively overload.";
+  const generateChatGPTSuggestion = () => {
+    const fullNotes = log.map((entry) => `${entry.date}: ${entry.note}`).join("\n");
+    const prompt = `Based on the following strength training log, suggest the next workout with detailed weight, reps, and sets. Be specific:\n${fullNotes}`;
+
+    fetch("/api/chatgpt", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ prompt })
+    })
+      .then(res => res.json())
+      .then(data => setSuggestion(data.message || "Could not generate suggestion."))
+      .catch(() => setSuggestion("Error generating suggestion."));
   };
 
   return (
@@ -39,7 +67,7 @@ export default function Home() {
       <div className="mb-4 border p-4 rounded">
         <textarea
           className="w-full p-2 border rounded"
-          placeholder="Today’s training note..."
+          placeholder="Training note... (start with a date like 5/27)"
           value={note}
           onChange={(e) => setNote(e.target.value)}
         />
@@ -48,7 +76,7 @@ export default function Home() {
 
       <div className="mb-4 border p-4 rounded">
         <p className="text-lg font-medium">💡 Next Workout Suggestion:</p>
-        <p>{suggestNext()}</p>
+        <p>{suggestion}</p>
       </div>
 
       <h2 className="text-xl font-semibold mb-2">📓 History</h2>
